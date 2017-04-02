@@ -378,12 +378,98 @@ namespace TSP
         public string[] bBSolveProblem()
         {
             string[] results = new string[3];
+            Stopwatch timer = new Stopwatch();
+            int current_time = 0;
+            timer.Start();
 
-            // TODO: Add your implementation for a branch and bound solver here.
+            string[] greedy_r = greedySolveProblem();
+
+            State root = new State(Cities.Length);
+            List<State> queue = new List<State>();
+            
+            for(int i = 0; i < Cities.Length;i++)
+            {
+                for (int j = 0; j < Cities.Length; j++)
+                {
+                    if (i == j) root.matrix[i, j] = double.PositiveInfinity;
+                    else root.matrix[i, j] = Cities[i].costToGetTo(Cities[j]);
+                    //Console.Write(root.matrix[i, j] + " "); 
+                }
+                //Console.WriteLine();
+            }
+
+            root.find_lb(0);
+            root.route.Add(Cities[0]);
+
+            
+            /*for (int i = 0; i < Cities.Length; i++)
+            {
+                for (int j = 0; j < Cities.Length; j++)
+                {
+                    Console.Write(root.matrix[i, j] + " ");
+                }
+                Console.WriteLine();
+            }*/
+
+            
+            int from = 0;
+            int current_depth = 0;
+            State at_node = root;
+            do
+            {
+                double current_count = bssf.costOfRoute();
+                current_depth++;
+                foreach (int to in at_node.get_children(from))
+                {
+                    if (to == 0 && at_node.route.Count == Cities.Length)
+                    {
+                        TSPSolution t_bssf = new TSPSolution(at_node.route);
+                        if (t_bssf.costOfRoute() < current_count)
+                        {
+                            bssf = t_bssf;
+                        }
+                    
+                    }
+                    else if (to != 0)
+                    {
+                        State temp = new State(Cities.Length);
+                        Array.Copy(at_node.matrix, temp.matrix, Cities.Length * Cities.Length);
+                        for (int j = 0; j < Cities.Length; j++)
+                        {
+                            temp.matrix[from, j] = double.PositiveInfinity;
+                            temp.matrix[j, to] = double.PositiveInfinity;
+                        }
+                        temp.matrix[to, from] = double.PositiveInfinity;
+                        temp.find_lb(at_node.lower_bound);
+                        if (temp.lower_bound < bssf.costOfRoute())
+                        {
+                            temp.number = to;
+                            temp.depth = current_depth;
+                            temp.do_priority();
+
+                            temp.route = new ArrayList(at_node.route);
+                            temp.route.Add(Cities[to]);
+                            queue.Add(temp);
+                        }
+
+                    }
+                    queue.Sort((p1, p2) => (p1.priority.CompareTo(p2.priority)));
+                    
+                }
+                do
+                {
+                    at_node = queue[0];
+                    queue.RemoveAt(0);
+                    from = at_node.number;
+                } while (at_node.lower_bound > current_count && queue.Count > 0);
+                if (timer.Elapsed.Minutes > 0) break;
+            } while (queue.Count > 0);
 
 
-            results[COST] = "not implemented";    // load results into array here, replacing these dummy values
-            results[TIME] = "-1";
+            timer.Stop();
+
+            results[COST] = costOfBssf().ToString();
+            results[TIME] = timer.Elapsed.ToString(); ;
             results[COUNT] = "-1";
 
             return results;
@@ -400,12 +486,54 @@ namespace TSP
         public string[] greedySolveProblem()
         {
             string[] results = new string[3];
+            Stopwatch timer = new Stopwatch();
+            timer.Start();
 
-            // TODO: Add your implementation for a greedy solver here.
+            
+            Route = new ArrayList();
+            List<City> remaining = new List<City>();
+            List<int> orig = new List<int>();
+            for(int i = 0; i < Cities.Length; i++)   
+            {
+                remaining.Add(Cities[i]);
+                orig.Add(i);
+            }
 
-            results[COST] = "not implemented";    // load results into array here, replacing these dummy values
-            results[TIME] = "-1";
-            results[COUNT] = "-1";
+
+            int index = 0;
+            do
+            {
+                Route.Add(Cities[index]);
+                int r_ind = remaining.IndexOf(Cities[index]);
+                remaining.RemoveAt(r_ind);
+                orig.RemoveAt(r_ind);
+
+                List<double> costs = new List<double>();
+                for (int j=0;j<remaining.Count;j++)
+                {   
+                    costs.Add(Cities[index].costToGetTo(remaining[j]));
+                }
+                double value = double.PositiveInfinity;
+                    
+                for (int k = 0; k < costs.Count; k++)
+                {
+                    if(costs[k] < value)
+                    {
+                        value = costs[k];
+                        index = orig[k];
+                    }
+                }
+                
+                    
+                
+            } while (Route.Count != Cities.Length);
+
+            bssf = new TSPSolution(Route);
+
+            timer.Stop();
+            results[COST] = bssf.costOfRoute().ToString();    // load results into array here, replacing these dummy values
+            results[TIME] = timer.Elapsed.ToString();
+            results[COUNT] = "1";
 
             return results;
         }
