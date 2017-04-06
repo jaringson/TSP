@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.Drawing;
 using System.Diagnostics;
+using System.Linq;
 
 
 namespace TSP
@@ -377,55 +378,77 @@ namespace TSP
         /// <returns>results array for GUI that contains three ints: cost of solution, time spent to find solution, number of solutions found during search (not counting initial BSSF estimate)</returns>
         public string[] bBSolveProblem()
         {
+            // Overall the worst time and space complexity would be O(n!) and
+            // the time complexity would be O(n!) where n is the amount of
+            // cities possible for our route. We know, however, that the branch
+            // and bound method will do much better as it prunes off states from the
+            // queue. If we consider the pruning doing a really good job, 
+            // then time complexity tends to be O(n^3) and space complexity tends to be 
+            // O(n^3). This is because ideally be prune often enough that the final 
+            // solution has the most space. 
             string[] results = new string[3];
             Stopwatch timer = new Stopwatch();
-            int current_time = 0;
+            int count = 0;
             timer.Start();
 
             string[] greedy_r = greedySolveProblem();
+            // Gready takes O(n^2) time and O(n) space.
 
             State root = new State(Cities.Length);
             List<State> queue = new List<State>();
             
+            // O(n^2) time and O(n^2) space for n cities in a State S.
             for(int i = 0; i < Cities.Length;i++)
             {
                 for (int j = 0; j < Cities.Length; j++)
                 {
                     if (i == j) root.matrix[i, j] = double.PositiveInfinity;
                     else root.matrix[i, j] = Cities[i].costToGetTo(Cities[j]);
-                    //Console.Write(root.matrix[i, j] + " "); 
                 }
-                //Console.WriteLine();
             }
-
-            root.find_lb(0);
-            root.route.Add(Cities[0]);
-
             
-            /*for (int i = 0; i < Cities.Length; i++)
-            {
-                for (int j = 0; j < Cities.Length; j++)
-                {
-                    Console.Write(root.matrix[i, j] + " ");
-                }
-                Console.WriteLine();
-            }*/
 
+            root.find_lb(); // Takes a most O(n^3) time.
+            root.route.Add(Cities[0]);
+            double root_lb = root.lower_bound;
+
+            int max_states = 1;
+            int updates = 0;
+            int states_created = 0;
+            int pruned = 0;
             
             int from = 0;
-            int current_depth = 0;
+
             State at_node = root;
             do
             {
+                // The do-while loop would cost at most O(n!) becuase each node would
+                // be considered. But the branch and bound method reduces this significantly.
                 double current_count = bssf.costOfRoute();
-                current_depth++;
                 foreach (int to in at_node.get_children(from))
                 {
+                    // At most there will be n - 1 children to get. Therefore,
+                    // this loop will cost O(n) for each state calculated.
                     if (to == 0 && at_node.route.Count == Cities.Length)
                     {
+                        if(root_lb == at_node.lower_bound)
+                        {
+                            count++;
+                            updates++;
+                            bssf = new TSPSolution(at_node.route);
+                            timer.Stop();
+
+                            results[COST] = costOfBssf().ToString();
+                            results[TIME] = timer.Elapsed.ToString();
+                            results[COUNT] = count.ToString();
+
+                            return results;
+                        }
                         TSPSolution t_bssf = new TSPSolution(at_node.route);
                         if (t_bssf.costOfRoute() < current_count)
                         {
+                            count++;
+                            updates++;
                             bssf = t_bssf;
                         }
                     
@@ -433,44 +456,70 @@ namespace TSP
                     else if (to != 0)
                     {
                         State temp = new State(Cities.Length);
+                        states_created++;
+                        temp.lower_bound = at_node.matrix[from, to];
+
+                        // Copying takes O(n^2) time.
                         Array.Copy(at_node.matrix, temp.matrix, Cities.Length * Cities.Length);
+                        List<Tuple<int, int>> zeros = new List<Tuple<int, int>>();
                         for (int j = 0; j < Cities.Length; j++)
                         {
+                            // This loop checks if we are turing a zero into infinity
+                            // and then changes a whole row and column into infinity
+                            // (See TSP branch and bound for details).
+                            if (temp.matrix[from, j] == 0 && j != to) zeros.Add(new Tuple<int, int>(from, j));
+                            if (temp.matrix[j, to] == 0 && j != from) zeros.Add(new Tuple<int, int>(j, to));
                             temp.matrix[from, j] = double.PositiveInfinity;
                             temp.matrix[j, to] = double.PositiveInfinity;
                         }
+                        if (temp.matrix[from, to] == 0) zeros.Add(new Tuple<int, int>(from, to));
                         temp.matrix[to, from] = double.PositiveInfinity;
-                        temp.find_lb(at_node.lower_bound);
-                        if (temp.lower_bound < bssf.costOfRoute())
+
+                        // Used to use find_lb() but at wost check_zeros is O(n^2) 
+                        // instead of O(n^3).
+                        temp.check_zeros(zeros);
+                        //temp.lb_find() 
+
+                        temp.lower_bound += at_node.lower_bound;
+                        if (temp.lower_bound < current_count)
                         {
                             temp.number = to;
-                            temp.depth = current_depth;
+                            temp.depth = at_node.depth + 1;
                             temp.do_priority();
 
                             temp.route = new ArrayList(at_node.route);
                             temp.route.Add(Cities[to]);
                             queue.Add(temp);
                         }
+                        else pruned++;
 
-                    }
-                    queue.Sort((p1, p2) => (p1.priority.CompareTo(p2.priority)));
-                    
+                    } 
                 }
+
+                // This sorting time takes O(nlog(n)) time.
+                // The queue space compexity is complicated because we don't 
+                // really know how many States will be on the queue. The worst case
+                // is O(n!) but we usually do not get to this value. (See table in report)
+                queue = queue.OrderByDescending(x => x.priority).ToList();
+                if (max_states < queue.Count) max_states = queue.Count;
+                pruned--; // necessary because the do-while structure
                 do
                 {
-                    at_node = queue[0];
-                    queue.RemoveAt(0);
+                    pruned++;
+                    at_node = queue[queue.Count - 1];
+                    queue.RemoveAt(queue.Count - 1); // Removing at end of array saves time.
                     from = at_node.number;
                 } while (at_node.lower_bound > current_count && queue.Count > 0);
-                if (timer.Elapsed.Minutes > 0) break;
+                if (timer.Elapsed.TotalSeconds > ProblemAndSolver.TIME_LIMIT) break;
+
             } while (queue.Count > 0);
 
 
             timer.Stop();
 
             results[COST] = costOfBssf().ToString();
-            results[TIME] = timer.Elapsed.ToString(); ;
-            results[COUNT] = "-1";
+            results[TIME] = timer.Elapsed.ToString();
+            results[COUNT] = count.ToString();
 
             return results;
         }
@@ -485,6 +534,10 @@ namespace TSP
         /// <returns>results array for GUI that contains three ints: cost of solution, time spent to find solution, number of solutions found during search (not counting initial BSSF estimate)</returns>
         public string[] greedySolveProblem()
         {
+            // Overall the greedy algorithm takes O(n) time (see below)
+            // and O(n) space because we only have three arrays which each 
+            // have n cities.
+
             string[] results = new string[3];
             Stopwatch timer = new Stopwatch();
             timer.Start();
@@ -501,6 +554,11 @@ namespace TSP
 
 
             int index = 0;
+
+            // Do-While loop takes at worst case O(n^2) becuase it
+            // has n-1 * n cities to loop over for the first value.
+            // After this, the algorithm gets better, but is still bounded 
+            // by O(n^2)
             do
             {
                 Route.Add(Cities[index]);
@@ -531,9 +589,9 @@ namespace TSP
             bssf = new TSPSolution(Route);
 
             timer.Stop();
-            results[COST] = bssf.costOfRoute().ToString();    // load results into array here, replacing these dummy values
+            results[COST] = bssf.costOfRoute().ToString(); 
             results[TIME] = timer.Elapsed.ToString();
-            results[COUNT] = "1";
+            results[COUNT] = "1"; // Because it will only find one solution.
 
             return results;
         }
