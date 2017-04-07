@@ -9,7 +9,7 @@ namespace TSP
     public class State
     {
         // This class is to hold each subproblem from the reduced matrix.
-        // It has members for the matrix, the node (number) it came from,
+        // It has members for the matrix, the number in the list of the cities,
         // depth, lower bound, and priority number it should have for the queue
         public int number;
         public double[,] matrix;

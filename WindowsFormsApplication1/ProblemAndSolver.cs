@@ -534,7 +534,7 @@ namespace TSP
         /// <returns>results array for GUI that contains three ints: cost of solution, time spent to find solution, number of solutions found during search (not counting initial BSSF estimate)</returns>
         public string[] greedySolveProblem()
         {
-            // Overall the greedy algorithm takes O(n) time (see below)
+            // Overall the greedy algorithm takes O(n^2) time (see below)
             // and O(n) space because we only have three arrays which each 
             // have n cities.
 
